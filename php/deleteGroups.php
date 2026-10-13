@@ -1,5 +1,5 @@
 <?php
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 $groupId = $_POST['groupId'] ?? $_POST['groupId'] ?? null;
 

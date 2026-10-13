@@ -1,6 +1,6 @@
 <?php
 session_start();
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $userId = $_POST['userId'] ?? null;

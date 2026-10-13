@@ -1,5 +1,4 @@
 <?php
-include __DIR__ . '/../../Private/ConnectionMyBuddy/connection.php';
 
 if (empty($_SESSION['userId'])) {
     header('Location: index.php?page=loginRegister');
@@ -13,15 +12,12 @@ $isCurrentUserAdmin = false;
 
 if ($groupId) {
     $sqlCurrentGroup = "
-        SELECT g.groupsId, g.name, g.createdByUserId, g.createdAt, g.image, g.totalAmount, g.isDeleted
+        SELECT g.groupsId, g.name, g.createdAt, g.image, g.totalAmount, g.isDeleted
         FROM `groups` g
         WHERE g.groupsId = :groupId
-        AND (
-            g.createdByUserId = :userId
-            OR EXISTS (
-                SELECT 1 FROM `group_members` gm
-                WHERE gm.groupId = g.groupsId AND gm.userId = :userId
-            )
+        AND EXISTS (
+            SELECT 1 FROM `group_members` gm
+            WHERE gm.groupId = g.groupsId AND gm.userId = :userId
         )
     ";
     $stmtCurrent = $pdo->prepare($sqlCurrentGroup);
@@ -51,13 +47,13 @@ $adminUserIds = [];
 
 if ($currentGroup) {
     try {
+        // AANGEPAST: createdByUserId weggehaald uit de query en ORDER BY
         $sqlMembers = "
-            SELECT gm.groupMemberId, gm.isDeleted, u.userId, u.name, g.createdByUserId, g.isDeleted
+            SELECT gm.groupMemberId, gm.isDeleted, u.userId, u.name
             FROM `group_members` gm
             INNER JOIN `users` u ON gm.userId = u.userId
-            INNER JOIN `groups` g ON gm.groupId = g.groupsId
             WHERE gm.groupId = :groupId AND gm.isDeleted = 0
-            ORDER BY g.createdByUserId
+            ORDER BY u.name
         ";
         $stmtMembers = $pdo->prepare($sqlMembers);
         $stmtMembers->bindValue(':groupId', $groupId, PDO::PARAM_INT);
@@ -76,20 +72,17 @@ if ($currentGroup) {
         $adminRows = $stmtAdmins->fetchAll(PDO::FETCH_ASSOC);
         $adminUserIds = array_column($adminRows, 'adminsId');
 
-        // Transacties ophalen - hier aangepast, geen gm alias meer
+        // AANGEPAST: Transacties ophalen - zonder payedByUserId
         $sqlTransactions = "
-            SELECT p.paymentId, p.groupsId, p.description, p.date, p.image, p.amount, u.name, g.createdByUserId  AS payer
+            SELECT p.paymentId, p.groupsId, p.description, p.date, p.image, p.amount, p.currencyId, p.isDeleted
             FROM `payment` p
-            INNER JOIN `groups` g ON p.groupsId = g.groupsId
-            INNER JOIN `users` u ON g.createdByUserId = u.userId
-            WHERE p.groupsId = :groupId
+            WHERE p.groupsId = :groupId AND p.isDeleted = 0
             ORDER BY p.date DESC
         ";
         $stmtTrans = $pdo->prepare($sqlTransactions);
         $stmtTrans->bindValue(':groupId', $groupId, PDO::PARAM_INT);
         $stmtTrans->execute();
         $transactions = $stmtTrans->fetchAll(PDO::FETCH_ASSOC);
-
 
     } catch (PDOException $e) {
         echo "Databasefout: " . htmlspecialchars($e->getMessage());
@@ -103,15 +96,16 @@ foreach ($members as $member) {
         break;
     }
 }
+
 if (!empty($transactions)) {
     $paymentId = $transactions[0]['paymentId'];
 
     $sqlDebts = "
-        SELECT d.paymentId, d.groupMemberId, d.amount, d.status, u.name AS debtorName, u.userId
+        SELECT d.paymentId, d.userId, d.amount, d.status, u.name AS debtorName, u.userId
         FROM debts d
-        INNER JOIN group_members gm ON d.groupMemberId = gm.groupMemberId
-        INNER JOIN users u ON gm.userId = u.userId
-        WHERE d.status = 0 AND d.paymentId = :paymentId AND gm.groupId = :groupId
+        INNER JOIN users u ON d.userId = u.userId
+        INNER JOIN payment p ON d.paymentId = p.paymentId
+        WHERE d.status = 0 AND d.paymentId = :paymentId AND p.groupsId = :groupId AND p.isDeleted = 0
     ";
     $stmtDebts = $pdo->prepare($sqlDebts);
     $stmtDebts->bindValue(':paymentId', $paymentId, PDO::PARAM_INT);
@@ -121,20 +115,19 @@ if (!empty($transactions)) {
 } else {
     $userdebts = [];
 }
+
 $sqlDebts = "
-    SELECT d.paymentId, d.groupMemberId, d.amount, d.status, u.name AS debtorName
+    SELECT d.paymentId, d.userId, d.amount, d.status, u.name AS debtorName
     FROM debts d
-    INNER JOIN group_members gm ON d.groupMemberId = gm.groupMemberId
-    INNER JOIN users u ON gm.userId = u.userId
-    WHERE d.groupMemberId = :groupMemberId AND d.status = 1
+    INNER JOIN users u ON d.userId = u.userId
+    INNER JOIN payment p ON d.paymentId = p.paymentId
+    WHERE d.userId = :userId AND d.status = 1 AND p.isDeleted = 0
     LIMIT 1
 ";
 $stmtDebts = $pdo->prepare($sqlDebts);
-$stmtDebts->bindValue(':groupMemberId', $currentGroupMemberId, PDO::PARAM_INT);
+$stmtDebts->bindValue(':userId', $currentGroupMemberId, PDO::PARAM_INT);
 $stmtDebts->execute();
 $debt = $stmtDebts->fetch(PDO::FETCH_ASSOC);
-
-
 
 foreach (['error', 'success'] as $type) {
     if (!empty($_SESSION[$type])) {
@@ -142,19 +135,61 @@ foreach (['error', 'success'] as $type) {
         unset($_SESSION[$type]);
     }
 }
+$sqlvalutas = "select * from currencies";
+$stmtValutas = $pdo->prepare($sqlvalutas);
+$stmtValutas->execute();
+$valutas = $stmtValutas->fetchAll(PDO::FETCH_ASSOC);
+
+$currencyLookup = [];
+foreach ($valutas as $valuta) {
+    $currencyLookup[$valuta['currencyId']] = $valuta;
+}
+
+function getCurrencySymbol($currencyName) {
+    $symbols = [
+        'Euro' => '€',
+        'dollar' => '$',
+        'nakfa' => 'Nfk',
+        'US Dollar' => '$',
+        'Britse Pond' => '£',
+        'Zwitserse Frank' => 'CHF',
+        'Japanse Yen' => '¥',
+        'Chinese Yuan' => '¥',
+        'Noorse Kroon' => 'kr',
+        'Zweedse Kroon' => 'kr',
+        'Canadese Dollar' => 'C$',
+        'Australische Dollar' => 'A$',
+        'Turkse Lira' => '₺',
+        'Indiase Roepie' => '₹',
+        'Braziliaanse Real' => 'R$',
+        'Russische Roebel' => '₽',
+        'Zuid-Afrikaanse Rand' => 'R'
+    ];
+
+    return $symbols[$currencyName] ?? $currencyName;
+}
+
 ?>
 
-
 <main class="main-content">
-
     <?php if ($currentGroup): ?>
         <header class="group-header">
-            <div id="groupTitleBtn" aria-pressed="false" aria-controls="sideMember" class="group-title-box" style="cursor:pointer;" >
+            <div id="groupTitleBtn" aria-pressed="false" aria-controls="sideMember" class="group-title-box" style="cursor:pointer;">
                 <img class="group-photo"
                      src="<?= htmlspecialchars($currentGroup['image'] ? 'uploads/' . $currentGroup['image'] : 'img/mybuddy.png') ?>"
                      onerror="this.onerror=null;this.src='img/default.png';"/>
                 <span class="group-title"><?= htmlspecialchars($currentGroup['name']) ?></span>
-                <span class="group-title">€ <?= number_format($currentGroup['totalAmount'] ?? 0, 2, ',', '.') ?></span>
+                <?php
+                // Voor de groep totaal, pak de valuta van de eerste transactie of default Euro
+                $groupCurrency = !empty($transactions) && isset($currencyLookup[$transactions[0]['currencyId']])
+                    ? $currencyLookup[$transactions[0]['currencyId']]
+                    : ['currencyName' => 'Euro', 'currencySymbol' => '€'];
+
+                $groupCurrencySymbol = !empty($groupCurrency['currencySymbol'])
+                    ? $groupCurrency['currencySymbol']
+                    : getCurrencySymbol($groupCurrency['currencyName']);
+                ?>
+                <span class="group-title"><?= htmlspecialchars($groupCurrencySymbol) ?> <?= number_format($currentGroup['totalAmount'] ?? 0, 2, ',', '.') ?></span>
             </div>
 
             <?php if ($isCurrentUserAdmin): ?>
@@ -164,9 +199,11 @@ foreach (['error', 'success'] as $type) {
                         EDIT
                     </button>
 
-                    <button class="group-create-btn" type="submit"
-                            onclick="return confirm('Weet je zeker dat je deze groep wilt verwijderen?')">Delete
-                    </button>
+                    <form enctype="multipart/form-data" action="php/deletePayment.php" method="post">
+                        <input type="hidden" name="groupId" value="<?=($currentGroup['groupsId']); ?>">
+                        <input type="hidden" name="paymentId" value="<?=($transactions[0]['paymentId'] ?? ''); ?>">
+                        <button onclick="confirm('weet je zeker dat je het wilt verwijderen')" class="group-create-btn" type="submit">Delete</button>
+                    </form>
 
                     <button class="group-create-btn"
                             onclick="window.location.href='index.php?page=addPayment&groupId=<?= htmlspecialchars($currentGroup['groupsId']) ?>'">
@@ -188,8 +225,6 @@ foreach (['error', 'success'] as $type) {
                 </div>
             <?php endif; ?>
         </header>
-
-
 
         <section class="side-member" id="sideMember" aria-hidden="true" hidden>
             <h3>Leden</h3>
@@ -238,14 +273,14 @@ foreach (['error', 'success'] as $type) {
         <?php endif; ?>
 
         <?php
-        // Berekening betaalde bedragen
         $paidAmount = 0;
         if ($currentGroup && $groupId) {
             try {
                 $sql = "SELECT SUM(d.amount) AS total_paid
                         FROM debts d
-                        INNER JOIN group_members gm ON gm.groupMemberId = d.groupMemberId
-                        WHERE gm.groupId = :groupId AND d.status = 1";
+                        INNER JOIN `users` u ON d.userId = u.userId
+                        INNER JOIN payment p ON d.paymentId = p.paymentId
+                        WHERE p.groupsId = :groupId AND d.status = 1 AND p.isDeleted = 0";
                 $stmt = $pdo->prepare($sql);
                 $stmt->bindValue(':groupId', $groupId, PDO::PARAM_INT);
                 $stmt->execute();
@@ -262,7 +297,7 @@ foreach (['error', 'success'] as $type) {
             $progressvaluepay = 0;
         }
 
-        // Percentage gebruikers zonder schuld
+        // Percentage gebruikers zonder schuld - alleen voor zichtbare transacties
         $allUserIds = array_column($members, 'userId');
         $debtUserIds = array_column($userdebts, 'userId');
 
@@ -281,44 +316,44 @@ foreach (['error', 'success'] as $type) {
             <i class='bx bxs-user'></i>
         </div>
 
-
-
         <section class="group-list">
             <?php if (!empty($transactions)): ?>
                 <?php foreach ($transactions as $trans): ?>
+                    <?php
+                    $currency = isset($currencyLookup[$trans['currencyId']])
+                        ? $currencyLookup[$trans['currencyId']]
+                        : ['currencyName' => 'Euro', 'currencySymbol' => '€'];
+
+                    $currencySymbol = !empty($currency['currencySymbol'])
+                        ? $currency['currencySymbol']
+                        : getCurrencySymbol($currency['currencyName']);
+                    ?>
                     <div class="group-card">
                         <img class="group-image" src="<?= htmlspecialchars($trans['image'] ?: 'img/mybuddy.png') ?>"
                              alt="Userfoto"/>
-                        <span class="group-user-name"><?= htmlspecialchars($trans['payer'] ?: 'Onbekend') ?></span>
-                        <span class="user-amount">€ <?= number_format($trans['amount'], 2, ',', '.') ?></span>
+                        <span class="group-user-name">Betaling</span>
+                        <span class="user-amount"><?= htmlspecialchars($currencySymbol) ?> <?= number_format($trans['amount'], 2, ',', '.') ?></span>
                         <p class="description"><?= htmlspecialchars($trans['description']) ?></p>
                         <small class="date">
                             <?= $trans['date'] ? date('d-m-Y', strtotime($trans['date'])) : 'Onbekende datum' ?>
                         </small>
-
-
                     </div>
-
-
                 <?php endforeach; ?>
             <?php else: ?>
                 <p>Geen transacties gevonden.</p>
             <?php endif; ?>
 
-
             <h3>Betaalde Schulden</h3>
             <?php
-
             $sqlPaidDebts = "
-    SELECT d.amount, d.status, p.description, p.date, p.image, u.name AS debtorName
-    FROM `debts` d
-    INNER JOIN `payment` p ON d.paymentId = p.paymentId
-    INNER JOIN `groups` g ON p.groupsId = g.groupsId
-    INNER JOIN `group_members` gm ON d.groupMemberId = gm.groupMemberId
-    INNER JOIN `users` u ON gm.userId = u.userId
-    WHERE g.groupsId = :groupId
-    ORDER BY p.date DESC
-";
+                SELECT d.amount, d.status, p.description, p.date, p.image, p.currencyId, d.userId, u.name AS debtorName
+                FROM `debts` d
+                INNER JOIN `payment` p ON d.paymentId = p.paymentId
+                INNER JOIN `groups` g ON p.groupsId = g.groupsId
+                INNER JOIN `users` u ON d.userId = u.userId
+                WHERE g.groupsId = :groupId AND p.isDeleted = 0
+                ORDER BY p.date DESC
+            ";
             $stmtPaidDebts = $pdo->prepare($sqlPaidDebts);
             $stmtPaidDebts->bindValue(':groupId', $groupId, PDO::PARAM_INT);
             $stmtPaidDebts->execute();
@@ -327,11 +362,21 @@ foreach (['error', 'success'] as $type) {
 
             <?php if (!empty($paidDebts)): ?>
                 <?php foreach ($paidDebts as $paid): ?>
+                    <?php
+                    // Haal de juiste valuta op voor deze schuld
+                    $debtCurrency = isset($currencyLookup[$paid['currencyId']])
+                        ? $currencyLookup[$paid['currencyId']]
+                        : ['currencyName' => 'Euro', 'currencySymbol' => '€'];
+
+                    $debtCurrencySymbol = !empty($debtCurrency['currencySymbol'])
+                        ? $debtCurrency['currencySymbol']
+                        : getCurrencySymbol($debtCurrency['currencyName']);
+                    ?>
                     <div class="group-card">
                         <img class="group-image" src="<?= htmlspecialchars($paid['image'] ?: 'img/mybuddy.png') ?>"
                              alt="Userfoto"/>
                         <span class="group-user-name"><?= htmlspecialchars($paid['debtorName'] ?: 'Onbekend') ?></span>
-                        <span class="user-amount">€ <?= number_format($paid['amount'], 2, ',', '.') ?></span>
+                        <span class="user-amount"><?= htmlspecialchars($debtCurrencySymbol) ?> <?= number_format($paid['amount'], 2, ',', '.') ?></span>
                         <p class="description"><?= htmlspecialchars($paid['description']) ?></p>
                         <small class="date"><?= $paid['date'] ? date('d-m-Y', strtotime($paid['date'])) : 'Onbekende datum' ?></small>
                         <small class="date">
@@ -342,7 +387,6 @@ foreach (['error', 'success'] as $type) {
             <?php else: ?>
                 <p>Geen betaalde schulden gevonden.</p>
             <?php endif; ?>
-
         </section>
 
     <?php else: ?>
@@ -352,27 +396,28 @@ foreach (['error', 'success'] as $type) {
     <?php
     if ($currentGroupMemberId !== null) {
         $sqlDebts = "
-            SELECT d.paymentId, d.groupMemberId, d.amount, d.status, u.name AS debtorName
-            FROM `debts` d
-            INNER JOIN `group_members` gm ON d.groupMemberId = gm.groupMemberId
-            INNER JOIN `users` u ON gm.userId = u.userId
-            WHERE d.groupMemberId = :groupMemberId AND d.status = 0
-        ";
+        SELECT d.paymentId, d.userId, d.amount, d.status, u.name AS debtorName
+        FROM `debts` d
+        INNER JOIN `users` u ON d.userId = u.userId
+        WHERE d.userId = :userId AND d.status = 0
+    ";
         $stmtDebts = $pdo->prepare($sqlDebts);
-        $stmtDebts->bindValue(':groupMemberId', $currentGroupMemberId, PDO::PARAM_INT);
+        $stmtDebts->bindValue(':userId', $userId, PDO::PARAM_INT);
         $stmtDebts->execute();
         $debts = $stmtDebts->fetchAll(PDO::FETCH_ASSOC);
 
         if (!empty($debts)) { ?>
             <aside class="user-pay">
                 <button class="pay-btn"
-                        onclick="location.href='index.php?page=payment&groupId=<?= htmlspecialchars($groupId) ?>&groupMemberId=<?= htmlspecialchars($currentGroupMemberId) ?>'">
+                        onclick="location.href='index.php?page=payment&groupId=<?= htmlspecialchars($groupId) ?>&groupMemberId=<?= htmlspecialchars($userId) ?>'">
                     Betalen
                 </button>
             </aside>
         <?php }
     }
     ?>
+
+
 </main>
 
 <script>

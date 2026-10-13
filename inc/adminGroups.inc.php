@@ -4,7 +4,7 @@ $userId = $_SESSION['userId'];
 
 
 $Sql = "
-SELECT DISTINCT g.groupsId, g.name, g.createdByUserId, g.createdAt, g.image
+SELECT DISTINCT g.groupsId, g.name,  g.createdAt, g.image
 FROM groups g
 LEFT JOIN group_members gm ON g.groupsId = gm.groupId
 ORDER BY g.createdAt DESC

@@ -1,5 +1,5 @@
 <?php
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 $userId = $_GET['userId'] ?? null;
 

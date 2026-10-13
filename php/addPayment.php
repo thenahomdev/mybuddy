@@ -1,6 +1,6 @@
 <?php
 session_start();
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 try {
     $groupId = (int)$_POST['groupId'];
@@ -14,13 +14,17 @@ try {
     $image = base64_encode(file_get_contents($_FILES['foto']['tmp_name']));
 
     if (!is_array($userShares) || empty($userShares)) {
-        throw new Exception("Geen geldige verdeling ontvangen.");
+        $_SESSION['error'] = "Geen geldige verdeling ontvangen.";
+        header('Location: ../index.php?page=aadPayment&groupId=' . $groupId);
+        exit;
     }
 
     $totalShares = array_sum($userShares);
 
     if ($distributionMethod === 'Exact bedrag' && abs($totalShares - $totalAmount) > 0.01) {
-        throw new Exception("Het totaal van de verdeling ($totalShares) komt niet overeen met het opgegeven bedrag ($totalAmount).");
+        $_SESSION['error'] = "Het totaal van de verdeling ($totalShares) komt niet overeen met het opgegeven bedrag";
+        header('Location: ../index.php?page=aadPayment&groupId=' . $groupId);
+        exit;
     }
 
     $currencyCheck = $pdo->prepare("SELECT currencyId FROM currencies WHERE currencyId = :currencyId");
@@ -47,8 +51,8 @@ try {
     $paymentId = $pdo->lastInsertId();
 
     $insertDebtSql = "
-        INSERT INTO debts (paymentId, groupMemberId, amount, status)
-        VALUES (:paymentId, :groupMemberId, :amount, :status)
+        INSERT INTO debts (paymentId, userId, amount, status)
+        VALUES (:paymentId, :userId, :amount, :status)
     ";
     $insertDebtStmt = $pdo->prepare($insertDebtSql);
 
@@ -58,7 +62,7 @@ try {
         $status = ($userId === $paidByUserId) ? 1 : 0;
         $insertDebtStmt->execute([
             ':paymentId' => $paymentId,
-            ':groupMemberId' => $userId,
+            ':userId' => $userId,
             ':amount' => $userAmount,
             ':status' => $status
         ]);

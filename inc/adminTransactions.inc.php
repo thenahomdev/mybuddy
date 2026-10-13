@@ -8,7 +8,7 @@ $sql = "
         u.name AS userName,
         g.name AS groupName
     FROM payment p
-    JOIN group_members gm ON p.groupMemberId = gm.groupMemberId
+    JOIN group_members gm ON p.groupsId = gm.groupMemberId
     JOIN users u ON gm.userId = u.userId
     JOIN groups g ON gm.groupId = g.groupsId
     ORDER BY p.date DESC

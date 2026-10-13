@@ -1,6 +1,6 @@
 <?php
 session_start();
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 require '../vendor/autoload.php';
@@ -39,12 +39,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $mail->isSMTP();
-        $mail->Host = 'smtp.gmail.com';
+        $mailConfig = __DIR__ . '/../config/mail.php';
+        if (!is_file($mailConfig)) {
+            throw new Exception('config/mail.php ontbreekt (zie config/mail.example.php).');
+        }
+        include $mailConfig;
+
+        $mail->Host = $mailHost;
         $mail->SMTPAuth = true;
-        $mail->Username = 'merhanbakboord@gmail.com';
-        $mail->Password = 'irjl hese jbyo yhop ';
+        $mail->Username = $mailUsername;
+        $mail->Password = $mailPassword;
         $mail->SMTPSecure = 'tls';
-        $mail->Port = 587;
+        $mail->Port = $mailPort;
 
         $mail->setFrom('noreply@mybuddy.nl', 'MyBuddy');
         $mail->addAddress($email);

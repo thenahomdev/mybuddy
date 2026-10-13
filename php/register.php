@@ -1,5 +1,5 @@
 <?php
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 session_start();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -50,34 +50,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'name' => $name,
         'registrationDate' => $registrationDate,
     ]);
-    // Zet userid van de nieuw geregistreerde gebruiker op basis van email
     $newUserId = $pdo->lastInsertId();
 
-// Controleer of er een invite_token is
     if (isset($_SESSION['invite_token'])) {
         $inviteToken = $_SESSION['invite_token'];
 
-        // Zoek de juiste invitation
         $stmt = $pdo->prepare("SELECT * FROM invitations WHERE token = :token AND status = 0");
         $stmt->execute(['token' => $inviteToken]);
         $invite = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($invite) {
-            // Voeg toe aan groep_members of jouw groep-tabel
             $groupId = $invite['groupId'];
 
-            // voorbeeld: groep_members (maak die tabel als je die nog niet hebt)
             $link = $pdo->prepare("INSERT INTO group_members (userId, groupId) VALUES (:userId, :groupId)");
             $link->execute([
                 'userId' => $newUserId,
                 'groupId' => $groupId
             ]);
 
-            // Zet status van invitation op gebruikt
             $update = $pdo->prepare("UPDATE invitations SET status = 1 WHERE invitationId = :id");
             $update->execute(['id' => $invite['invitationId']]);
 
-            unset($_SESSION['invite_token']); // opschonen
+            unset($_SESSION['invite_token']);
         }
     }
 

@@ -4,7 +4,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 $page = $_GET['page'] ?? 'homepage';
 
-include __DIR__ . '/../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/config/connection.php';
 if (!empty($_SESSION['adminId'])) {
     include 'inc/navItems/admin.nav.php';
 } elseif (!empty($_SESSION['userId'])) {

@@ -1,5 +1,5 @@
 <?php
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['userId'])) {
     $userId = $_GET['userId'];

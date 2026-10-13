@@ -1,6 +1,6 @@
 <?php
 
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $groupname = $_POST['name'] ?? null;

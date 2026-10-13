@@ -5,28 +5,42 @@ $userId = (int)($_SESSION['userId'] ?? 0);
 $groupId = (int)($_GET['groupId'] ?? 0);
 
 $sqlMembers = "
-    SELECT gm.groupMemberId, gm.isDeleted, u.userId, u.name, g.createdByUserId
-    FROM `group_members` gm
-    INNER JOIN `users` u ON gm.userId = u.userId
-    INNER JOIN `groups` g ON gm.groupId = g.groupsId
+    SELECT gm.groupMemberId, u.userId, u.name
+    FROM group_members gm
+    INNER JOIN users u ON gm.userId = u.userId
+    INNER JOIN groups g ON gm.groupId = g.groupsId
     WHERE gm.groupId = :groupId AND gm.isDeleted = 0
-    ORDER BY g.createdByUserId ASC
 ";
 $stmtMembers = $pdo->prepare($sqlMembers);
 $stmtMembers->bindValue(':groupId', $groupId, PDO::PARAM_INT);
 $stmtMembers->execute();
 $members = $stmtMembers->fetchAll(PDO::FETCH_ASSOC);
 
-// Zoek de groepsmaker onder de leden
+$sqlAdmin = "
+    SELECT ga.adminsId, u.name
+    FROM group_admins ga
+   INNER JOIN `users` u ON ga.adminsId = u.userId
+    WHERE groupsId = :groupId
+";
+$stmtAdmin = $pdo->prepare($sqlAdmin);
+$stmtAdmin->bindValue(':groupId', $groupId, PDO::PARAM_INT);
+$stmtAdmin->execute();
+$admin = $stmtAdmin->fetch(PDO::FETCH_ASSOC);
+
+$adminUserId = $admin['adminsId'] ?? null;
+$adminName = $admin['name'] ?? null;
+
+
 $groupCreatorId = null;
 $groupCreatorName = null;
 foreach ($members as $member) {
-    if ($member['userId'] == $member['createdByUserId']) {
+    if ($member['userId'] == $adminUserId) {
         $groupCreatorId = $member['groupMemberId'];
         $groupCreatorName = $member['name'];
         break;
     }
 }
+
 ?>
 
 <div class="form-container">
@@ -53,18 +67,23 @@ foreach ($members as $member) {
             </div>
 
             <div>
-                <label for="paidByUserId">Betaald door</label>
-                <?php if ($groupCreatorId !== null): ?>
-                    <select name="paidByUserId" id="paidByUserId" required>
-                        <option value="<?= htmlspecialchars($groupCreatorId) ?>">
-                            <?= htmlspecialchars($groupCreatorName) ?>
-                            <?php if ($userId == $member['userId']): ?> (Jij)<?php endif; ?>
-                        </option>
-                    </select>
-                    <input type="date" name="paymentDate" value="<?= $today ?>" required max="<?= $today ?>">
-                <?php else: ?>
-                    <p>Geen groepsmaker gevonden.</p>
-                <?php endif; ?>
+                <?php if ($adminUserId !== null): ?>
+                <select name="paidByUserId" id="paidByUserId" required>
+                    <option value="<?= htmlspecialchars($adminUserId) ?>">
+                        <?= htmlspecialchars($adminName) ?>
+                        <?php if ($userId == $adminUserId): ?> (Jij)<?php endif; ?>
+                    </option>
+                </select>
+
+                <label for="paymentDate" style="margin-top: 10px;">Betaaldatum</label>
+                <input
+                        type="date"
+                        id="paymentDate"
+                        name="paymentDate"
+                        max="<?= $today ?>"
+                        required
+                        value="<?= htmlspecialchars($transaction['date'] ?? $today) ?>"
+                >
             </div>
         </div>
 
@@ -103,6 +122,7 @@ foreach ($members as $member) {
             </div>
         </div>
 
+
         <div class="users-section" style="margin-top:10px;">
             <?php if (!empty($members)): ?>
                 <?php foreach ($members as $member): ?>
@@ -118,7 +138,7 @@ foreach ($members as $member) {
                                 step="0.01"
                                 min="0"
                                 value=""
-                                name="userShares[<?= htmlspecialchars($member['groupMemberId']) ?>]"
+                                name="userShares[<?= (int)$member['userId'] ?>]"
                                 aria-label="Bedrag voor <?= htmlspecialchars($member['name']) ?>"
                                 style="width:70px; text-align:right;"
                                 class="user-share"
@@ -138,7 +158,7 @@ foreach ($members as $member) {
         </div>
     </form>
 </div>
-
+<?php endif; ?>
 <script>
     function updateCountDisplay(input, value) {
         const countSpan = input.parentElement.querySelector('.count');

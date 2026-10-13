@@ -1,6 +1,6 @@
 <?php
 session_start();
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 $email = ($_POST['email']);
 $password = $_POST['password'];

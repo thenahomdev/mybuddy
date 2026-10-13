@@ -5,12 +5,11 @@ $userId = (int)($_SESSION['userId'] ?? 0);
 $groupId = (int)($_GET['groupId'] ?? 0);
 $paymentId = (int)($_GET['paymentId'] ?? 0);
 
-// Haal groepsleden op
 $sqlMembers = "
-    SELECT gm.groupMemberId, u.userId, u.name, g.createdByUserId
+    SELECT gm.groupMemberId, u.userId, u.name
     FROM group_members gm
     INNER JOIN users u ON gm.userId = u.userId
-    INNER JOIN groups g ON gm.groupId = g.groupsId
+    INNER JOIN `groups` g ON gm.groupId = g.groupsId
     WHERE gm.groupId = :groupId AND gm.isDeleted = 0
 ";
 $stmtMembers = $pdo->prepare($sqlMembers);
@@ -18,31 +17,53 @@ $stmtMembers->bindValue(':groupId', $groupId, PDO::PARAM_INT);
 $stmtMembers->execute();
 $members = $stmtMembers->fetchAll(PDO::FETCH_ASSOC);
 
-// Vind groepsmaker
 $groupCreatorId = null;
 $groupCreatorName = null;
+
+// Get admin info first before using it
+$sqlAdmin = "
+    SELECT ga.adminsId, u.name
+    FROM group_admins ga
+    INNER JOIN `users` u ON ga.adminsId = u.userId
+    WHERE groupsId = :groupId
+";
+$stmtAdmin = $pdo->prepare($sqlAdmin);
+$stmtAdmin->bindValue(':groupId', $groupId, PDO::PARAM_INT);
+$stmtAdmin->execute();
+$admin = $stmtAdmin->fetch(PDO::FETCH_ASSOC);
+
+$adminUserId = $admin['adminsId'] ?? null;
+$adminName = $admin['name'] ?? null;
+
+// Now fix the group creator logic
 foreach ($members as $member) {
-    if ($member['userId'] == $member['createdByUserId']) {
+    if ($member['userId'] == $adminUserId) {
         $groupCreatorId = $member['groupMemberId'];
         $groupCreatorName = $member['name'];
         break;
     }
 }
 
-// Haal transactie op (1 betaling)
-$sqlTransaction = "
-    SELECT p.paymentId, p.groupsId, p.description, p.date, p.image, p.amount, p.currencyId, u.name AS payerName, g.createdByUserId
-    FROM payment p
-    INNER JOIN groups g ON p.groupsId = g.groupsId
-    INNER JOIN users u ON g.createdByUserId = u.userId
-    WHERE p.paymentId = :paymentId
+$sqlTransactions = "
+    SELECT p.paymentId, p.groupsId, p.description, p.date, p.image, p.amount, p.currencyId, p.isDeleted
+    FROM `payment` p
+    WHERE p.groupsId = :groupId AND p.isDeleted = 0
+    ORDER BY p.date DESC
 ";
-$stmtTrans = $pdo->prepare($sqlTransaction);
-$stmtTrans->bindValue(':paymentId', $paymentId, PDO::PARAM_INT);
+$stmtTrans = $pdo->prepare($sqlTransactions);
+$stmtTrans->bindValue(':groupId', $groupId, PDO::PARAM_INT);
 $stmtTrans->execute();
-$transaction = $stmtTrans->fetch(PDO::FETCH_ASSOC);
+$transactions = $stmtTrans->fetchAll(PDO::FETCH_ASSOC);
 
-// Haal alle schulden (user shares) op voor deze betaling
+// Get the specific transaction for editing
+$transaction = null;
+foreach ($transactions as $trans) {
+    if ($trans['paymentId'] == $paymentId) {
+        $transaction = $trans;
+        break;
+    }
+}
+
 $sqlShares = "
     SELECT * FROM debts WHERE paymentId = :paymentId
 ";
@@ -53,7 +74,29 @@ $shares = $stmtShares->fetchAll(PDO::FETCH_ASSOC);
 
 $userShares = [];
 foreach ($shares as $share) {
-    $userShares[$share['groupMemberId']] = $share['amount'];
+    // Debug: Check what columns exist in the debts table
+    // Uncomment the next line to see available columns:
+    // var_dump(array_keys($share));
+
+    // Try different possible column names for group member ID
+    $memberKey = null;
+    if (isset($share['groupMemberId'])) {
+        $memberKey = $share['groupMemberId'];
+    } elseif (isset($share['group_member_id'])) {
+        $memberKey = $share['group_member_id'];
+    } elseif (isset($share['memberId'])) {
+        $memberKey = $share['memberId'];
+    } elseif (isset($share['member_id'])) {
+        $memberKey = $share['member_id'];
+    } elseif (isset($share['userId'])) {
+        $memberKey = $share['userId'];
+    } elseif (isset($share['user_id'])) {
+        $memberKey = $share['user_id'];
+    }
+
+    if ($memberKey !== null && isset($share['amount'])) {
+        $userShares[$memberKey] = $share['amount'];
+    }
 }
 ?>
 
@@ -91,15 +134,17 @@ foreach ($shares as $share) {
 
             <div>
                 <label for="paidByUserId">Betaald door</label>
-                <select name="paidByUserId" id="paidByUserId" required>
-                    <?php foreach ($members as $member): ?>
-                        <option value="<?= htmlspecialchars($member['groupMemberId']) ?>"
-                            <?= (isset($transaction['createdByUserId']) && $transaction['createdByUserId'] == $member['userId']) ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($member['name']) ?>
-                            <?= ($member['userId'] == $userId) ? '(Jij)' : '' ?>
+                <?php if ($adminUserId !== null): ?>
+                    <select name="paidByUserId" id="paidByUserId" required>
+                        <option value="<?= htmlspecialchars($adminUserId) ?>">
+                            <?= htmlspecialchars($adminName) ?>
+                            <?php if ($userId == $adminUserId): ?> (Jij)<?php endif; ?>
                         </option>
-                    <?php endforeach; ?>
-                </select>
+                    </select>
+
+                <?php else: ?>
+                    <p>Geen groepsmaker gevonden.</p>
+                <?php endif; ?>
 
                 <label for="paymentDate" style="margin-top: 10px;">Betaaldatum</label>
                 <input
@@ -169,7 +214,7 @@ foreach ($shares as $share) {
         <div class="users-section" style="margin-top: 10px;">
             <?php if (!empty($members)): ?>
                 <?php foreach ($members as $member):
-                    $amount = $userShares[$member['groupMemberId']] ?? '';
+                    $amount = $userShares[$member['userId']] ?? '';
                     ?>
                     <div class="user-row" style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                         <span class="label" style="flex:1;">
@@ -182,7 +227,7 @@ foreach ($shares as $share) {
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                name="userShares[<?= htmlspecialchars($member['groupMemberId']) ?>]"
+                                name="userShares[<?= htmlspecialchars($member['userId']) ?>]"
                                 value="<?= htmlspecialchars($amount) ?>"
                                 aria-label="Bedrag voor <?= htmlspecialchars($member['name']) ?>"
                                 style="width:70px; text-align:right;"

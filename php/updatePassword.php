@@ -1,6 +1,6 @@
 <?php
 session_start();
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 if (!isset($_SESSION['userId'])) {
     $_SESSION['error'] = "Geen gebruiker ingelogd.";

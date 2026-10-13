@@ -1,6 +1,6 @@
 <?php
 
-include '../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $groupname = $_POST['name'] ?? null;
@@ -22,12 +22,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     try {
-        $stmt = $pdo->prepare("INSERT INTO groups (name, image, createdAt, createdByUserId)   
-                               VALUES (:name, :image,  :createdAt,  :createdByUserId)");
+        $stmt = $pdo->prepare("INSERT INTO groups (name, image, createdAt) 
+                               VALUES (:name, :image,  :createdAt)");
         $stmt->bindParam(':name', $groupname);
         $stmt->bindParam(':image', $image);
         $stmt->bindParam(':createdAt', $createdAt);
-        $stmt->bindParam(':createdByUserId', $createdByUserId);
         $stmt->execute();
 
         $groupId = $pdo->lastInsertId();

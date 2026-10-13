@@ -1,6 +1,6 @@
 <?php
 session_start();
-include __DIR__ . '/../../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 
 // Check if user is logged in

@@ -1,5 +1,4 @@
 <?php
-include '../Private/ConnectionMyBuddy/connection.php';
 
 $loggedInUserId = $_SESSION['userId'] ?? null;
 $currentDateTime = date('Y-m-d H:i:s');

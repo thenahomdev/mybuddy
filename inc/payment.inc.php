@@ -12,14 +12,13 @@ $debts = [];
 
 if ($groupMemberId && $groupId) {
     $sqlDebts = "
-            SELECT d.paymentId, d.groupMemberId, d.amount, d.status, u.name AS debtorName
+            SELECT d.paymentId, d.userId, d.amount, d.status, u.name AS debtorName
             FROM debts d
-            INNER JOIN group_members gm ON d.groupMemberId = gm.groupMemberId
-            INNER JOIN users u ON gm.userId = u.userId
-            WHERE d.groupMemberId = :groupMemberId AND d.status = 0
+            INNER JOIN users u ON d.userId = u.userId
+            WHERE d.userId = :userId AND d.status = 0
         ";
     $stmtDebts = $pdo->prepare($sqlDebts);
-    $stmtDebts->bindParam(':groupMemberId', $groupMemberId, PDO::PARAM_INT);
+    $stmtDebts->bindParam(':userId', $groupMemberId, PDO::PARAM_INT);
     $stmtDebts->execute();
     $debts = $stmtDebts->fetchAll(PDO::FETCH_ASSOC);
 
@@ -29,10 +28,10 @@ if ($groupMemberId && $groupId) {
     }
 
     $sqlPayment = "
-       SELECT  p.paymentId, p.amount, p.description, p.image, p.date, g.createdByUserId, g.groupsId, u.name AS payerName
+       SELECT  p.paymentId, p.amount, p.description, p.image, p.date, p.groupsId, u.name AS payerName
         FROM payment p
-        INNER JOIN groups g ON p.groupsId = g.groupsId
-       INNER JOIN users u ON g.createdByUserId = u.userId
+        INNER JOIN group_admins g ON p.groupsId = p.groupsId
+       INNER JOIN users u ON g.adminsId = u.userId;
         WHERE p.paymentId = :paymentId;
     ";
     $stmt = $pdo->prepare($sqlPayment);
@@ -48,7 +47,9 @@ if ($groupMemberId && $groupId) {
 
 <div class="main-wrapper">
     <div class="participants">
-        <h1><?= htmlspecialchars($debtname) ?></h1>
+        <?php if (isset($debtname)): ?>
+            <h1><?= htmlspecialchars($debtname) ?></h1>
+        <?php endif; ?>
         <p>→</p>
         <h1><?= htmlspecialchars($paymentname) ?></h1>
     </div>
@@ -59,7 +60,7 @@ if ($groupMemberId && $groupId) {
             <input type="hidden" name="groupMemberId" value="<?= htmlspecialchars($groupMemberId) ?>">
             <input type="hidden" name="paymentId" value="<?= htmlspecialchars($member['paymentId'] ?? '') ?>">
 
-            <label for="amount">Bedrag (€):</label>
+            <label for="amount">Bedrag:</label>
             <input type="text" id="amount" name="amount"
                    value="<?= !empty($debts) ? number_format($debts[0]['amount'], 2, '.', '') : '' ?>">
 

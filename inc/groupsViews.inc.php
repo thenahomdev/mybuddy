@@ -8,13 +8,14 @@ if (empty($_SESSION['userId'])) {
 $userId = (int)$_SESSION['userId'];
 
 $Sql = "
-SELECT DISTINCT g.groupsId, g.name, g.createdByUserId, g.createdAt, g.image
+SELECT DISTINCT g.groupsId, g.name, ga.adminsId, g.createdAt, g.image
 FROM groups g
 LEFT JOIN group_members gm ON g.groupsId = gm.groupId
+LEFT JOIN group_admins ga ON g.groupsId = ga.groupsId
 WHERE g.isDeleted = 0
 AND (
-    g.createdByUserId = :userId
-    OR (gm.userId = :userId AND gm.isDeleted = 0)
+    ga.adminsId = :userId
+    OR  (gm.userId = :userId AND gm.isDeleted = 0)
 )
 ORDER BY g.createdAt DESC
 ";
@@ -38,7 +39,7 @@ $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </div>
                 </a>
 
-                <?php if ((int)$group['createdByUserId'] === $userId): ?>
+                <?php if ((int)$group['adminsId'] === $userId): ?>
                     <div class="three-dots" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
                         <span>⋮</span>
                         <div class="dropdown hidden" role="menu">

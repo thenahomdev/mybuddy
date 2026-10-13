@@ -1,5 +1,5 @@
 <?php
-include '../Private/ConnectionMyBuddy/connection.php';
+include __DIR__ . '/../config/connection.php';
 
 
 
@@ -12,9 +12,10 @@ $group = null;
 
 if ($groupId && $loggedInUserId) {
     $stmt = $pdo->prepare("
-        SELECT g.groupsId, g.name, g.image, g.totalAmount 
-        FROM `groups` g 
-        WHERE g.groupsId = :groupId AND g.createdByUserId = :userId
+        SELECT DISTINCT g.groupsId, g.name, g.createdAt, g.image, ga.adminsId
+            FROM groups g
+            LEFT JOIN group_admins ga ON g.groupsId = ga.groupsId
+            WHERE g.isDeleted = 0; AND g.groupsId = :groupId AND g.adminsId = :userId
     ");
     $stmt->bindValue(':groupId', $groupId, PDO::PARAM_INT);
     $stmt->bindValue(':userId', $loggedInUserId, PDO::PARAM_INT);

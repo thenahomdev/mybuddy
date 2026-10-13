@@ -1,6 +1,6 @@
 <nav class="navbar">
     <div class="logo">
-        <img src="images/logo.png" alt="MyBuddy Logo" />
+        <img src="img/logo.png" alt="MyBuddy Logo" />
     </div>
     <ul class="nav-links">
         <li><a href="index.php?page=groupsViews">Groepen</a></li>

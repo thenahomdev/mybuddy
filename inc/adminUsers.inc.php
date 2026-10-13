@@ -49,15 +49,15 @@ $statement->execute();
 
         <?php while ($row = $statement->fetch(PDO::FETCH_ASSOC)) { ?>
             <tr>
-                    <td><?= htmlspecialchars($row['email']) ?></td>
-                    <td><?= htmlspecialchars($row['name']) ?></td>
-                    <td><?= htmlspecialchars($row['registrationDate']) ?></td>
-                    <td><?= htmlspecialchars($row['status']) ?></td>
-                    <td><a href="index.php?page=userEdit&userId=<?= $row['userId'] ?>">Aanpassen</a></td>
-                    <td><a href="php/userDelete.php?userId=<?= $row['userId'] ?>">Verwijderen</a></td>
-                    <td><a href="php/userDeactivate.php?userId=<?= $row['userId'] ?>">Deactiveren</a></td>
+                <td><?= htmlspecialchars($row['email']) ?></td>
+                <td><?= htmlspecialchars($row['name']) ?></td>
+                <td><?= htmlspecialchars($row['registrationDate']) ?></td>
+                <td><?= htmlspecialchars($row['status']) ?></td>
+                <td><a href="index.php?page=userEdit&userId=<?= $row['userId'] ?>">Aanpassen</a></td>
+                <td><a href="php/userDelete.php?userId=<?= $row['userId'] ?>">Verwijderen</a></td>
+                <td><a href="php/userDeactivate.php?userId=<?= $row['userId'] ?>">Deactiveren</a></td>
             </tr>
         <?php } ?>
     </table>
-<button></button>
+    <button></button>
 <?php
